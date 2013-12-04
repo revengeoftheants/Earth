@@ -1,8 +1,10 @@
 /*
  * Creates a 3D earth with WebGL.
  *
+ * Texture maps were created by Tom Patterson, www.shadedrelief.com, and are in the public domain.
  *
- * This uses a Self-Executing Anonymous Function to declare the namespace "Main" and create public and private members within in.
+ *
+ * This uses a Self-Executing Anonymous Function to declare the namespace "Main" and create public and private members within it.
  *
  * @author Kevin Dean
  *
@@ -10,11 +12,10 @@
 
 /*
  * @param Main: Defines the namespace to use for public members of this class.
- * @param $: The shorthand to use for jQuery.
  * @param undefined: Nothing should be passed via this parameter. This ensures that you can use "undefined" here without worrying that another loaded
  *						script as redefined the global variable "undefined".
  */
-(function(Main, $, undefined) {
+(function(Main, undefined) {
 
 	/**********************
 	 * Constants
@@ -27,9 +28,9 @@
 	/**********************
 	 * Global variables
 	 **********************/
-	var _camera, _scene, _controls, _stats, _animationFrameId;
+	var _renderer, _camera, _scene, _controls, _stats, _animationFrameId;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
-	var _earthMesh, _cloudsMesh;
+	var _sun, _earthMesh, _boundsMesh, _lightsMesh, _cloudsMesh;
 
 
 
@@ -46,6 +47,7 @@
 	Main.CheckCompatibility = function() {
 		var compatibleInd = true;
 
+		/*
 		if (Detector.webgl === false) {
 			Detector.addGetWebGLMessage();
 			compatibleInd = false;
@@ -53,6 +55,7 @@
 			Detector.addGetChromeMessage();
 			compatibleInd = false;
 		}
+		*/
 
 		return compatibleInd;
 	};
@@ -65,7 +68,6 @@
 
 		try {
 			
-			
 			initRenderer();
 			initSceneAndCamera();
 			initStats();
@@ -73,13 +75,11 @@
 			
 			addContextLostListener();
 
-			
-			$(window).load( function() {
-				animate();
-			});
+			animate();
+
 		} catch ( error ) {
 
-			$(container).innerHTML = "There was a problem with WebGL. Please reload the page.";
+			document.getElementById("container").innerHTML = "There was a problem with WebGL. Please reload the page.";
 		}
 	};
 
@@ -121,7 +121,7 @@
 
 		// Create the camera itself
 		_camera = new THREE.PerspectiveCamera(CAM.FOV_ANGLE_NBR, _canvasWidth / _canvasHeight, CAM.NEAR_PLANE_NBR, CAM.FAR_PLANE_NBR);
-		_camera.position.z = 1.5;
+		_camera.position.z = 1.75;
 		_camera.rotationAutoUpdate = true;  // This is set to true by default. It forces the rotationMatrix to get calculated each frame.
 		_scene.add(_camera);
 
@@ -129,14 +129,14 @@
 
 		_scene.add(new THREE.AmbientLight(0x333333));
 
-		var light = new THREE.DirectionalLight(0xFFFFFF, 1);
-		light.position.set(5, 3, 5);
-		_scene.add(light);
+		_sun = new THREE.DirectionalLight(0xFFFFFF, 1);
+		_sun.position.set(1, 0, 0);
+		_scene.add(_sun);
 
 
 		var earthGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
 		var earthMat = 	new THREE.MeshPhongMaterial({
-    		map: THREE.ImageUtils.loadTexture('images/earth_no_clouds_8K.jpg'),
+    		map: THREE.ImageUtils.loadTexture('images/world.topo.bathy.200408.3x5400x2700.png'),
     		//bumpMap: THREE.ImageUtils.loadTexture('images/elev_bump_4k.jpg'),
     		bumpMap: THREE.ImageUtils.loadTexture('images/elev_bump_map_8K.png'),
     		bumpScale: 0.01,
@@ -148,14 +148,59 @@
 		_scene.add(_earthMesh);
 
 
+		var boundsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.001, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
+		var boundsMat = new THREE.MeshBasicMaterial({
+			map: THREE.ImageUtils.loadTexture('images/international_boundaries_8K.png'),
+			transparent: true
+		});
+		_boundsMesh = new THREE.Mesh(boundsGeom, boundsMat);
+
+		_scene.add(_boundsMesh);
+
+
+		
+		var lightsUniforms = {
+			inpTexture: { type: "t", value: THREE.ImageUtils.loadTexture('images/lights_transparent_8K.png'),},
+			inpSunPos: {type: "v3", value: _sun.position},
+			inpEarthTransform: {type: "m4", value: _earthMesh.matrix},
+			inpSunTransform: {type: "m4", value: _sun.matrixWorld}
+		};
+
+
+		var lightsShaderMat = new THREE.ShaderMaterial({
+			vertexShader: EarthShaders["nightLights"].vertexShader,
+			fragmentShader: EarthShaders["nightLights"].fragmentShader,
+			uniforms: lightsUniforms,
+			transparent: true
+		});
+
+
+
+
+		var lightsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.002, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
+		/*
+		var lightsMat = new THREE.MeshBasicMaterial({
+			map: THREE.ImageUtils.loadTexture('images/lights_transparent_8K.png'),
+			transparent: true
+		});
+		*/
+		_lightsMesh = new THREE.Mesh(lightsGeom, lightsShaderMat);
+
+		_scene.add(_lightsMesh);
+
+
 		var cloudsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.003, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
 		var cloudsMat = new THREE.MeshPhongMaterial({
-			map: THREE.ImageUtils.loadTexture('images/fair_clouds_4k.png'),
+			map: THREE.ImageUtils.loadTexture('images/fair_clouds_4K.png'),
 			transparent: true
 		});
 		_cloudsMesh = new THREE.Mesh(cloudsGeom, cloudsMat);
 
 		_scene.add(_cloudsMesh);
+
+
+		// Tilt the earth 23.4 degrees.
+		_earthMesh.rotation.x = _boundsMesh.rotation.x = _lightsMesh.rotation.x = _cloudsMesh.rotation.x = THREE.Math.degToRad(23.4);
 
 
 		var starsGeom = new THREE.SphereGeometry(STARS_NBRS.RADIUS, STARS_NBRS.SEGMENTS, STARS_NBRS.SEGMENTS);
@@ -222,11 +267,36 @@
 
 		_controls.update();
 
-		_earthMesh.rotation.y += 0.0005;
-		_cloudsMesh.rotation.y += 0.0005;
+		_earthMesh.rotation.y = _boundsMesh.rotation.y = _cloudsMesh.rotation.y = _lightsMesh.rotation.y += 0.0005;
 
 		// Render
 		_renderer.render(_scene, _camera);
+	}
+
+
+	function convertDegsToCartesian(inpLatitudeDegNbr, inpLongitudeDegNbr, inpRadiusLenNbr) {
+
+		/* We are using the geographic coordinate system rather than the spherical coordinate system (i.e., latitude is measured
+		 * in degrees away from the equator rather than from the pole). Note also that we are using the traditional 
+		 * world coordinate system here, which differs from that used for spherical coordinates (where Y is to the right, 
+		 * Z is up, and X is forward).
+		 */
+		var x = inpRadiusLenNbr * Math.cos(THREE.Math.degToRad(inpLatitudeDegNbr)) * Math.cos(THREE.Math.degToRad(inpLongitudeDegNbr));
+		var y = inpRadiusLenNbr * Math.sin(THREE.Math.degToRad(inpLatitudeDegNbr));
+		var z = inpRadiusLenNbr * Math.cos(THREE.Math.degToRad(inpLatitudeDegNbr)) * Math.sin(THREE.Math.degToRad(inpLongitudeDegNbr));
+
+		
+		return new Vector3(x, y, z);
+	}
+
+
+
+	function drawLines() {
+		/* Starting at the current spot in our data, retrieve the next entry. If 
+		 *
+		 * We load all our data into a collection keyed by timestamp. Search by getting the first entry greater than the current time we have.
+		 *
+		 */
 	}
 
 
@@ -235,7 +305,7 @@
 	 * Adds a listener for the webglcontextlost  event.
 	 */
 	function addContextLostListener() {
-		this._renderer.domElement.addEventListener("webglcontextlost", handleContextLost, false);
+		_renderer.domElement.addEventListener("webglcontextlost", handleContextLost, false);
 	}
 
 
@@ -294,4 +364,4 @@
 	});
 	*/
 
-} (window.Main = window.Main || {}, jQuery) );
+} (window.Main = window.Main || {}) );
