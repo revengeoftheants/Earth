@@ -44,21 +44,19 @@ EarthShaders = {
 			"varying vec3 vNormal;",
 			"varying vec3 transformedSunPos;",
 
+
 			"void main() {",
 
-				// Calculate the dot product of the sunlight to the vertex normal
-				"float dProd = dot(vNormal, transformedSunPos);",
+				// Calculate the dot product of the sun to the vertex normal
+				"float dProd = -1.0 * dot(vNormal, transformedSunPos);",
 				"vec4 color = texture2D( inpTexture, vUV );",
 
-				"if( dProd >= 0.0 ) {",
-					// If the vertex is covered by sunlight, do not display the lights texture on it.
-					"color.a = 0.0;",
-				"}",
+				"color.a = clamp(dProd, 0.0, 1.0);",
 
 				"gl_FragColor = color;",
-			"}"
-		].join( "\n" )
+			"}",
 
+			].join( "\n" )
 	}
 
 };

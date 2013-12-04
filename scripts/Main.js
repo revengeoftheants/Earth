@@ -130,7 +130,7 @@
 		_scene.add(new THREE.AmbientLight(0x333333));
 
 		_sun = new THREE.DirectionalLight(0xFFFFFF, 1);
-		_sun.position.set(1, 0, 0);
+		_sun.position.set(-1, 0, 0);
 		_scene.add(_sun);
 
 
