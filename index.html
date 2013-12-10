@@ -15,6 +15,27 @@
 				height: 800px;
 				width: 1200px;
 			}
+
+			#progressCntnr {
+				position: absolute;
+				/*Start block...Vertically and horizontally centers an absolutely positioned element.*/
+				margin: auto;
+				top: 0; left: 0; bottom: 0; right: 0;
+				/*...end block*/
+				z-index: 100;
+				width: 100%;
+				height: 50px;
+				color: #FFFFFF;
+				text-align: center;
+				font-family: arial;
+				font-size: large;
+			}
+
+			progress {
+				height: 10px;
+				margin: auto;
+				left: 0; right: 0;
+			}
 		</style>
 
 		<script type="text/javascript" src="scripts/libraries/three.min.js"></script>
@@ -27,6 +48,9 @@
 		
 	</head>
 	<body onload="var compatibleInd = Main.CheckCompatibility(); if (compatibleInd) {Main.InitScene();}">
+		<div id="progressCntnr">
+			<p>Loading high-resolution images...</p>
+		</div>
 		<div id="container"></div>
 		<!-- For screenshot capability. 
 		<input id="saveImg" type="button" value="save" disabled="disabled"/>

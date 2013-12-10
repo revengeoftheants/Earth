@@ -10,8 +10,13 @@
  *
  * Textures:
  *  **** All maps conform to the WG 8S4 standard.
- *	Star field - http://paulbourke.net/miscellaneous/starfield/
+ *  Earth with topography and bathymetry - http://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73776/world.topo.bathy.200408.3x21600x10800.jpg
+ *  Earth bump map - http://www.shadedrelief.com/natural3/pages/extra.html
+ *  Earth specular map - http://www.shadedrelief.com/natural3/pages/extra.html
  *	International borders - http://www.shadedrelief.com/natural3/pages/extra.html
+ *  Lights - http://www.shadedrelief.com/natural3/pages/textures.html
+ *  Clouds - http://www.shadedrelief.com/natural3/pages/clouds.html
+ *  Star field - http://paulbourke.net/miscellaneous/starfield/
  */
 
 /*
@@ -28,19 +33,19 @@
 	var EARTH_NBRS = {RADIUS: 0.5, SEGMENTS: 90, ROTATION: 6};
 	var STARS_NBRS = {RADIUS: 100, SEGMENTS: 32};
 	var MIN_TEXTURE_PIXEL_NBR = 4096;  // This is the size of the largest texture we initially load.
-	var TEXTURE_NMS = {EARTH_0: "earth_0", BUMP_0: "bump_0", SPEC_0: "spec_0", BORDERS_0: "borders_0", LIGHTS_0: "lights_0", CLOUDS_0: "clouds_0",
-					   EARTH_1: "earth_1", BUMP_1: "bump_1", SPEC_1: "spec_1", BORDERS_1: "borders_1", LIGHTS_1: "lights_1", CLOUDS_1: "clouds_1", STARS: "stars"};
-	var TEXTURE_STATE_NBRS = {DO_NOT_LOAD: 0, LOADING: 1, UPDATED: 2};
+	var MESH_SCALE_VECTS = {DISPLAY: new THREE.Vector3(1,1,1), HIDE: new THREE.Vector3(0,0,0)};
 
 
 	/**********************
 	 * Global variables
 	 **********************/
-	var _renderer, _camera, _scene, _controls, _stats, _animationFrameId, _maxTexturePixelNbr;
+	var _clock, _renderer, _camera, _scene, _controls, _stats, _animationFrameId, _maxTexturePixelNbr;
 	var _canvasWidth = window.innerWidth, _canvasHeight = window.innerHeight;
-	var _textures, _sun, _earthMesh, _boundsMesh, _lightsMesh, _cloudsMesh;
-	var _earthTextureStateNbr, _bumpTextureStateNbr, _bordersTextureStateNbr, _lightsTextureStateNbr, _cloudsTextureStateNbr;
-	var  _updtMatsInd = true, _clock;
+	var _sun, _earthMesh, _bordersMesh, _lightsMesh, _cloudsMesh;
+	var _progressCntnr, _progressBar, _textures = [];
+	var _textureUris = {earth: "", bump: "", spec: "", borders: "", lights: "", clouds: "", stars: ""};
+	var _meshesToBuildCnt = 0;
+	var _controlNms = {LIGHTS: "displayNightLightsInd", BORDERS: "displayBordersInd"};
 
 
 
@@ -98,15 +103,13 @@
 		try {
 			_clock = new THREE.Clock();
 
-			loadImages();
 			initRenderer();
+			loadImages();
 			initSceneAndCamera();
 			initStats();
 			initGUI();
 			
 			addContextLostListener();
-
-			animate();
 
 		} catch ( error ) {
 
@@ -127,36 +130,153 @@
 	 * 
 	 */
 	function loadImages() {
-		_textures = [];
+		_progressCntnr = document.getElementById("progressCntnr");
+		_progressBar = document.createElement("progress");
+		_progressBar.max = 1;  // The max attribute must have a value > 0.
+		_progressBar.removeAttribute("value");  // Without the "value" attribute, our progress is in an indeterminate stage.
+		_progressCntnr.appendChild(_progressBar);
 
-		_textures[TEXTURE_NMS.EARTH_0] = THREE.ImageUtils.loadTexture('images/world_topo_bathy_2048x1024.jpg'); // No need for transparency.
-		_textures[TEXTURE_NMS.BUMP_0] = THREE.ImageUtils.loadTexture('images/elev_bump_map_2048x1024.jpg'); // No need for transparency.
-		_textures[TEXTURE_NMS.SPEC_0] = THREE.ImageUtils.loadTexture('images/water_512x256.jpg');
-		_textures[TEXTURE_NMS.BORDERS_0] = THREE.ImageUtils.loadTexture('images/international_boundaries_4096x8192.png');
-		_textures[TEXTURE_NMS.LIGHTS_0] = THREE.ImageUtils.loadTexture('images/lights_2048x1024.png');
-		_textures[TEXTURE_NMS.CLOUDS_0] = THREE.ImageUtils.loadTexture('images/fair_clouds_2048x1024.png');
-		_textures[TEXTURE_NMS.STARS] = THREE.ImageUtils.loadTexture('images/galaxy_starfield_4096x2048.png');
-
-		_earthTextureStateNbr = _bumpTextureStateNbr= _bordersTextureStateNbr = _lightsTextureStateNbr = _cloudsTextureStateNbr = TEXTURE_STATE_NBRS.DO_NOT_LOAD;
+		_textureUris.spec = "images/water_512x256.jpg";
+		_textureUris.clouds = "images/fair_clouds_4096x2048.png";
+		_textureUris.stars = "images/galaxy_starfield_4096x2048.png";
 
 		if (_maxTexturePixelNbr >= 8192) {
-			_textures[TEXTURE_NMS.EARTH_1] = THREE.ImageUtils.loadTexture('images/world_topo_bathy_8192x4096.jpg');
-			_textures[TEXTURE_NMS.BUMP_1] = THREE.ImageUtils.loadTexture('images/elev_bump_map_8192x4096.jpg');
-			_textures[TEXTURE_NMS.BORDERS_1] = THREE.ImageUtils.loadTexture('images/international_boundaries_8192x4096.png');
-			_textures[TEXTURE_NMS.LIGHTS_1] = THREE.ImageUtils.loadTexture('images/lights_8192x4096.png');
-			_textures[TEXTURE_NMS.CLOUDS_1] = THREE.ImageUtils.loadTexture('images/fair_clouds_4096x2048.png');
+			_textureUris.earth = "images/world_topo_bathy_8192x4096.jpg";
+			_textureUris.bump = "images/elev_bump_map_8192x4096.jpg";
+			_textureUris.borders = "images/international_boundaries_8192x4096.png";
+			_textureUris.lights = "images/lights_8192x4096.png";
+		} else {
+			_textureUris.earth = "images/world_topo_bathy_4096x2048.jpg";
+			_textureUris.bump = "images/elev_bump_map_4096x2048.jpg";
+			_textureUris.borders = "images/international_boundaries_4096x2048.png";
+			_textureUris.lights = "images/lights_4096x2048_min62.png";
+		}
 
-			_earthTextureStateNbr = _bumpTextureStateNbr = _bordersTextureStateNbr = _lightsTextureStateNbr = _cloudsTextureStateNbr = TEXTURE_STATE_NBRS.LOADING;
-		} else if (_maxTexturePixelNbr >= 4096) {
-			_textures[TEXTURE_NMS.EARTH_1] = THREE.ImageUtils.loadTexture('images/world_topo_bathy_4096x2048.jpg');
-			_textures[TEXTURE_NMS.BUMP_1] = THREE.ImageUtils.loadTexture('images/elev_bump_map_4096x2048.jpg');
-			_textures[TEXTURE_NMS.BORDERS_1] = _textures[TEXTURE_NMS.BORDERS_0];
-			_textures[TEXTURE_NMS.LIGHTS_1] = THREE.ImageUtils.loadTexture('images/lights_4096x2048.png');
-			_textures[TEXTURE_NMS.CLOUDS_1] = _textures[TEXTURE_NMS.CLOUDS_0];
+		for (var key in _textureUris) {
+			if (_textureUris.hasOwnProperty(key)) {
+				requestImg(_textureUris[key]);
+				_meshesToBuildCnt++;
+				_progressBar.max++;
+			}
+		}
 
-			_earthTextureStateNbr = _bumpTextureStateNbr = _bordersTextureStateNbr = _lightsTextureStateNbr = _cloudsTextureStateNbr = TEXTURE_STATE_NBRS.LOADING;
+		_progressBar.max -= 1;  // Subtract 1 from the progress bar's max since we have to start it at 1 rather than 0.
+	}
+
+
+
+	/*
+	 * Requests an image.
+	 *
+	 * @param inpImgUri - The URI for the desired image.
+	 */
+	function requestImg (inpImgUri) {
+		var request = new XMLHttpRequest();
+		request.ID = inpImgUri;
+
+		var fileExtTxt = inpImgUri.substring(inpImgUri.length - 3);
+
+		if (fileExtTxt == "jpg") {
+			fileExtTxt = "jpeg";
+		}
+		_textures[inpImgUri] = {httpRequestObj: request, fileTyp: fileExtTxt, totSzNbr: 0, loadedSzNbr: 0, textureObj: null};
+		request.onload = crteImgElem;
+		request.open("GET", inpImgUri, true);
+		request.overrideMimeType('text/plain; charset=x-user-defined'); 
+		request.send(null);
+	}
+
+
+
+	/*
+	 * Creates a DOM element for this image.
+	 *
+	 * @param inpEvent - The event that triggered this function.
+	 */
+	function crteImgElem(inpEvent) {
+		var imgElem = document.createElement("img");
+		var texture = new THREE.Texture(imgElem);
+		_textures[inpEvent.currentTarget.ID].textureObj = texture;
+		imgElem.onload = function()  {
+			texture.needsUpdate = true;
+		};
+		imgElem.src = "data:image/" + _textures[inpEvent.currentTarget.ID].fileTyp + ";base64," + encodeInBase64(_textures[inpEvent.currentTarget.ID].httpRequestObj.responseText);
+
+		_progressBar.value++;
+
+		switch (inpEvent.currentTarget.ID) {
+			case _textureUris.earth:
+				crteEarthMesh(); break;
+			case _textureUris.bump:
+				crteEarthMesh(); break;
+			case _textureUris.spec:
+				crteEarthMesh(); break;
+			case _textureUris.borders:
+				crteBordersMesh(); break;
+			case _textureUris.lights:
+				crteNightLightsMesh(); break;
+			case _textureUris.clouds:
+				crteCloudsMesh(); break;
+			case _textureUris.stars:
+				crteStarsMesh(); break;
+		}
+
+		_meshesToBuildCnt--;
+
+
+		// If all our meshes are built, we're ready to start animations.
+		if (_meshesToBuildCnt == 0) {
+			// Tilt the earth 23.4 degrees.
+			_earthMesh.rotation.x = _bordersMesh.rotation.x = _lightsMesh.rotation.x = _cloudsMesh.rotation.x = THREE.Math.degToRad(23.4);
+
+			// Remove the progress bar and start the animation loop.
+			document.body.removeChild(_progressCntnr);
+			animate();
 		}
 	}
+
+
+
+	/*
+	 * Encodes text in base 64.
+	 * 
+	 * This encoding function is from Philippe Tenenhaus's example at http://www.philten.com/us-xmlhttprequest-image/
+	 */
+	function encodeInBase64(inpTxt) {
+		var b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+		var rtnTxt = "";
+		var i = 0;
+
+		while (i < inpTxt.length){
+			//all three "& 0xff" added below are there to fix a known bug 
+			//with bytes returned by xhr.responseText
+			var byte1 = inpTxt.charCodeAt(i++) & 0xff;
+			var byte2 = inpTxt.charCodeAt(i++) & 0xff;
+			var byte3 = inpTxt.charCodeAt(i++) & 0xff;
+
+			var enc1 = byte1 >> 2;
+			var enc2 = ((byte1 & 3) << 4) | (byte2 >> 4);
+
+			var enc3, enc4;
+
+			if (isNaN(byte2)) {
+				enc3 = enc4 = 64;
+			} else {
+				enc3 = ((byte2 & 15) << 2) | (byte3 >> 6);
+				
+				if (isNaN(byte3)) {
+					enc4 = 64;
+				} else {
+					enc4 = byte3 & 63;
+				}
+			}
+
+			rtnTxt += b64.charAt(enc1) + b64.charAt(enc2) + b64.charAt(enc3) + b64.charAt(enc4);
+		} 
+
+		return rtnTxt;
+	}
+
 
 
 	/*
@@ -175,8 +295,7 @@
 		
 		_renderer.shadowMapEnabled = true;  // Shadows are enabled.
 
-		var container = document.getElementById('container');
-		container.appendChild( _renderer.domElement );
+		document.getElementById("container").appendChild( _renderer.domElement );
 	}
 
 
@@ -193,7 +312,9 @@
 		_camera.rotationAutoUpdate = true;  // This is set to true by default. It forces the rotationMatrix to get calculated each frame.
 		_scene.add(_camera);
 
-		_controls = new THREE.TrackballControls(_camera);
+		// Must add the renderer DOM element to TrackballControls so that a mouse click on the Dat GUI doesn't steal focus.
+		_controls = new THREE.TrackballControls(_camera, _renderer.domElement);
+
 		_controls.minDistance = 0.7;
 		_controls.maxDistance = 200;
 		_controls.noPan = true;
@@ -203,36 +324,60 @@
 		_sun = new THREE.DirectionalLight(0xFFFFFF, 1);
 		_sun.position.set(-1, 0, 0.25);
 		_scene.add(_sun);
+	}
 
 
-		var earthGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
-		var earthMat = 	new THREE.MeshPhongMaterial({
-    		map: _textures[TEXTURE_NMS.EARTH_0],
-    		bumpMap: _textures[TEXTURE_NMS.BUMP_0],
-    		bumpScale: 0.01,
-    		specularMap: _textures[TEXTURE_NMS.SPEC_0],
-    		specular: new THREE.Color('grey')
-		});
-		_earthMesh = new THREE.Mesh(earthGeom, earthMat);
 
-		_scene.add(_earthMesh);
+	/*
+	 * Creates the main earth mesh.
+	 */
+	function crteEarthMesh() {
+
+		if (_earthMesh == null && 
+			_textures[_textureUris.earth].textureObj !== null &&
+			_textures[_textureUris.bump].textureObj !== null &&
+			_textures[_textureUris.spec].textureObj !== null) {
+
+			var earthGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
+			var earthMat = 	new THREE.MeshPhongMaterial({
+	    		map: _textures[_textureUris.earth].textureObj,
+	    		bumpMap: _textures[_textureUris.bump].textureObj,
+	    		bumpScale: 0.01,
+	    		specularMap: _textures[_textureUris.spec].textureObj,
+	    		specular: new THREE.Color('grey')
+			});
+			_earthMesh = new THREE.Mesh(earthGeom, earthMat);
+
+			_scene.add(_earthMesh);
+		}
+	}
 
 
-		var boundsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.001, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
-		var boundsMat = new THREE.MeshBasicMaterial({
-			map: _textures[TEXTURE_NMS.BORDERS_0],
+
+	/*
+	 * Creates the international borders mesh.
+	 */
+	function crteBordersMesh() {
+		var bordersGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.002, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
+		var bordersMat = new THREE.MeshBasicMaterial({
+			map: _textures[_textureUris.borders].textureObj,
 			transparent: true
 		});
-		_boundsMesh = new THREE.Mesh(boundsGeom, boundsMat);
+		_bordersMesh = new THREE.Mesh(bordersGeom, bordersMat);
 
-		_scene.add(_boundsMesh);
+		_scene.add(_bordersMesh);
+	}
 
 
-		
+
+	/*
+	 * Creates the night lights mesh.
+	 */
+	function crteNightLightsMesh() {
 		var lightsUniforms = {
-			inpTexture: {type: "t", value: _textures[TEXTURE_NMS.LIGHTS_0]},
+			inpTexture: {type: "t", value: _textures[_textureUris.lights].textureObj},
 			inpSunPos: {type: "v3", value: _sun.position},
-			inpEarthTransform: {type: "m4", value: _earthMesh.matrix},
+			inpEarthTransform: {type: "m4", value: new THREE.Matrix4()}, // This matrix is just a placeholder for the moment.
 			inpSunTransform: {type: "m4", value: _sun.matrixWorld}
 		};
 
@@ -245,34 +390,47 @@
 		});
 
 
-		var lightsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.002, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
+		var lightsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.003, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
 		_lightsMesh = new THREE.Mesh(lightsGeom, lightsMat);
 
+		// Update the earth transform so that it matches that of an earth mesh. As the mesh is rotated in world space, this transform will reflect those rotations.
+		lightsUniforms.inpEarthTransform.value = _lightsMesh.matrixWorld;
+		lightsUniforms.inpEarthTransform.needsUpdate = true;
+
 		_scene.add(_lightsMesh);
+	}
 
 
+
+	/*
+	 * Creates the clouds mesh.
+	 */
+	function crteCloudsMesh() {
 		var cloudsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.003, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
 		var cloudsMat = new THREE.MeshPhongMaterial({
-			map: _textures[TEXTURE_NMS.CLOUDS_0],
+			map: _textures[_textureUris.clouds].textureObj,
 			transparent: true
 		});
 		_cloudsMesh = new THREE.Mesh(cloudsGeom, cloudsMat);
 
 		_scene.add(_cloudsMesh);
+	}
 
 
-		// Tilt the earth 23.4 degrees.
-		_earthMesh.rotation.x = _boundsMesh.rotation.x = _lightsMesh.rotation.x = _cloudsMesh.rotation.x = THREE.Math.degToRad(23.4);
 
-
+	/*
+	 * Creates the stars mesh.
+	 */
+	function crteStarsMesh() {
 		var starsGeom = new THREE.SphereGeometry(STARS_NBRS.RADIUS, STARS_NBRS.SEGMENTS, STARS_NBRS.SEGMENTS);
 		var starsMat = new THREE.MeshBasicMaterial({
-			map: _textures[TEXTURE_NMS.STARS],
+			map: _textures[_textureUris.stars].textureObj,
 			side: THREE.BackSide
 		});
 		var starsMesh = new THREE.Mesh(starsGeom, starsMat);
 
 		_scene.add(starsMesh);
+
 	}
 
 
@@ -285,7 +443,7 @@
 		_stats.domElement.style.position = "absolute";
 		_stats.domElement.style.top = "8px";
 		_stats.domElement.style.zIndex = 100;
-		container.appendChild(_stats.domElement);
+		document.getElementById("container").appendChild(_stats.domElement);
 	}
 
 
@@ -295,14 +453,15 @@
 	 */
 	function initGUI() {
 		var gui = new dat.GUI();
+		gui.close();  // Start the GUI in its closed position.
 
 		_effectController = {
-			//muteInd: false,
-			//patternCnt: 3
+			displayNightLightsInd: true,
+			displayBordersInd: true
 		};
 
-		//gui.add(_effectController, "muteInd").name("No Music");
-		//gui.add(_effectController, "patternCnt", 0, PATTERN_NBRS.MAX_CNT).step(1).name("Pattern Count");
+		gui.add(_effectController, _controlNms.LIGHTS).name("Night View");
+		gui.add(_effectController, _controlNms.BORDERS).name("Country Borders");
 	}
 
 
@@ -327,85 +486,27 @@
 			console.log("Context lost!");
 		}
 
+		var deltaSecs = _clock.getDelta();
+
 		_controls.update();
+
+		_earthMesh.rotation.y = _bordersMesh.rotation.y = _cloudsMesh.rotation.y = _lightsMesh.rotation.y += 0.0005;
+
+
+		if (_effectController.displayBordersInd) {
+			_bordersMesh.scale.copy(MESH_SCALE_VECTS.DISPLAY);
+		} else {
+			_bordersMesh.scale.copy(MESH_SCALE_VECTS.HIDE);
+		}
+
+		if (_effectController.displayNightLightsInd) {
+			_lightsMesh.scale.copy(MESH_SCALE_VECTS.DISPLAY);
+		} else {
+			_lightsMesh.scale.copy(MESH_SCALE_VECTS.HIDE);
+		}
 
 		// Render
 		_renderer.render(_scene, _camera);
-
-		if (_clock.running == false) {
-			_clock.start();
-		}
-
-		if (_updtMatsInd == true) {
-			if (_clock.getElapsedTime() >= 0.1) {
-				_clock.stop();
-				_clock.elapsedTime = 0;
-				updtMatTextures();
-			}
-		} else {
-			_earthMesh.rotation.y = _boundsMesh.rotation.y = _cloudsMesh.rotation.y = _lightsMesh.rotation.y += 0.0005;
-		}
-
-	}
-
-
-
-	/*
-	 * Updates our material textures to higher resolution versions if they exist.
-	 */
-	function updtMatTextures() {
-
-		var matUpdtdInd = false;
-
-
-		if (matUpdtdInd == false && _textures[TEXTURE_NMS.BORDERS_1] !== null && _bordersTextureStateNbr !== TEXTURE_STATE_NBRS.UPDATED) {
-
-			_boundsMesh.material.map = _textures[TEXTURE_NMS.BORDERS_1];
-			_boundsMesh.material.map.needsUpdate = true;
-
-			_bordersTextureStateNbr = TEXTURE_STATE_NBRS.UPDATED;
-			matUpdtdInd = true;
-		}
-
-
-		if (matUpdtdInd == false && _textures[TEXTURE_NMS.LIGHTS_1] !== null && _lightsTextureStateNbr !== TEXTURE_STATE_NBRS.UPDATED) {
-			_lightsMesh.material.uniforms.inpTexture.value = _textures[TEXTURE_NMS.LIGHTS_1];
-			_lightsMesh.material.uniforms.inpTexture.needsUpdate = true;
-
-			_lightsTextureStateNbr = TEXTURE_STATE_NBRS.UPDATED;
-			matUpdtdInd = true;
-		}
-
-
-		if (matUpdtdInd == false && _textures[TEXTURE_NMS.CLOUDS_1] !== null && _cloudsTextureStateNbr !== TEXTURE_STATE_NBRS.UPDATED) {
-
-			_cloudsMesh.material.map = _textures[TEXTURE_NMS.CLOUDS_1];
-			_cloudsMesh.material.map.needsUpdate = true;
-
-			_cloudsTextureStateNbr = TEXTURE_STATE_NBRS.UPDATED;
-			matUpdtdInd = true;
-		}
-
-
-		if (matUpdtdInd == false && _textures[TEXTURE_NMS.EARTH_1] !== null && _earthTextureStateNbr !== TEXTURE_STATE_NBRS.UPDATED &&
-		    _textures[TEXTURE_NMS.BUMP_1] !== null && _bumpTextureStateNbr !== TEXTURE_STATE_NBRS.UPDATED) {
-
-    		_earthMesh.material.map = _textures[TEXTURE_NMS.EARTH_1];
-    		_earthMesh.material.map.needsUpdate = true;
-    		_earthMesh.material.bumpMap = _textures[TEXTURE_NMS.BUMP_1];
-    		_earthMesh.material.bumpMap.needsUpdate = true;
-
-    		_earthTextureStateNbr = _bumpTextureStateNbr = TEXTURE_STATE_NBRS.UPDATED;
-    		matUpdtdInd = true;
-		}
-		
-
-		if ((_earthTextureStateNbr == TEXTURE_STATE_NBRS.DO_NOT_LOAD || _earthTextureStateNbr == TEXTURE_STATE_NBRS.UPDATED) &&
-		    (_bumpTextureStateNbr == TEXTURE_STATE_NBRS.DO_NOT_LOAD || _bumpTextureStateNbr == TEXTURE_STATE_NBRS.UPDATED) && 
-		    (_lightsTextureStateNbr == TEXTURE_STATE_NBRS.DO_NOT_LOAD || _lightsTextureStateNbr == TEXTURE_STATE_NBRS.UPDATED) &&
-		    (_cloudsTextureStateNbr == TEXTURE_STATE_NBRS.DO_NOT_LOAD || _cloudsTextureStateNbr == TEXTURE_STATE_NBRS.UPDATED)) {
-			_updtMatsInd = false;
-		}
 	}
 
 
