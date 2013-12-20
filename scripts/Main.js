@@ -30,7 +30,7 @@
 	 * Constants
 	 **********************/
 	var CAM = {FOV_ANGLE_NBR: 45, NEAR_PLANE_NBR: 0.1, FAR_PLANE_NBR: 1000};
-	var EARTH_NBRS = {RADIUS: 0.5, SEGMENTS: 90, ROTATION: 6};
+	var EARTH_NBRS = {RADIUS: 0.5, SEGMENTS: 90, ROTATION_VELOCITY: 0.0005};
 	var STARS_NBRS = {RADIUS: 100, SEGMENTS: 32};
 	var MIN_TEXTURE_PIXEL_NBR = 4096;  // This is the size of the largest texture we initially load.
 	var MESH_SCALE_VECTS = {DISPLAY: new THREE.Vector3(1,1,1), HIDE: new THREE.Vector3(0,0,0)};
@@ -45,7 +45,7 @@
 	var _progressCntnr, _progressBar, _textures = [];
 	var _textureUris = {earth: "", bump: "", spec: "", borders: "", lights: "", clouds: "", stars: ""};
 	var _meshesToBuildCnt = 0;
-	var _controlNms = {LIGHTS: "displayNightLightsInd", BORDERS: "displayBordersInd"};
+	var _controlNms = {TOPO: "displayTopoInd", BORDERS: "displayBordersInd", LIGHTS: "displayNightLightsInd", CLOUDS: "displayCloudsInd"};
 
 
 
@@ -358,7 +358,7 @@
 	 * Creates the international borders mesh.
 	 */
 	function crteBordersMesh() {
-		var bordersGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.002, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
+		var bordersGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.001, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
 		var bordersMat = new THREE.MeshBasicMaterial({
 			map: _textures[_textureUris.borders].textureObj,
 			transparent: true
@@ -390,7 +390,7 @@
 		});
 
 
-		var lightsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.003, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
+		var lightsGeom = new THREE.SphereGeometry(EARTH_NBRS.RADIUS + 0.002, EARTH_NBRS.SEGMENTS, EARTH_NBRS.SEGMENTS);
 		_lightsMesh = new THREE.Mesh(lightsGeom, lightsMat);
 
 		// Update the earth transform so that it matches that of an earth mesh. As the mesh is rotated in world space, this transform will reflect those rotations.
@@ -456,12 +456,16 @@
 		gui.close();  // Start the GUI in its closed position.
 
 		_effectController = {
+			displayTopoInd: true,
+			displayBordersInd: true,
 			displayNightLightsInd: true,
-			displayBordersInd: true
+			displayCloudsInd: true
 		};
 
-		gui.add(_effectController, _controlNms.LIGHTS).name("Night View");
+		gui.add(_effectController, _controlNms.TOPO).name("Land & Water");
 		gui.add(_effectController, _controlNms.BORDERS).name("Country Borders");
+		gui.add(_effectController, _controlNms.LIGHTS).name("Night View");
+		gui.add(_effectController, _controlNms.CLOUDS).name("Clouds");
 	}
 
 
@@ -490,8 +494,15 @@
 
 		_controls.update();
 
-		_earthMesh.rotation.y = _bordersMesh.rotation.y = _cloudsMesh.rotation.y = _lightsMesh.rotation.y += 0.0005;
+		_earthMesh.rotation.y = _bordersMesh.rotation.y = _lightsMesh.rotation.y += EARTH_NBRS.ROTATION_VELOCITY;
+		_cloudsMesh.rotation.y += (EARTH_NBRS.ROTATION_VELOCITY * 1.05);
 
+
+		if (_effectController.displayTopoInd) {
+			_earthMesh.scale.copy(MESH_SCALE_VECTS.DISPLAY);
+		} else {
+			_earthMesh.scale.copy(MESH_SCALE_VECTS.HIDE);
+		}
 
 		if (_effectController.displayBordersInd) {
 			_bordersMesh.scale.copy(MESH_SCALE_VECTS.DISPLAY);
@@ -503,6 +514,12 @@
 			_lightsMesh.scale.copy(MESH_SCALE_VECTS.DISPLAY);
 		} else {
 			_lightsMesh.scale.copy(MESH_SCALE_VECTS.HIDE);
+		}
+
+		if (_effectController.displayCloudsInd) {
+			_cloudsMesh.scale.copy(MESH_SCALE_VECTS.DISPLAY);
+		} else {
+			_cloudsMesh.scale.copy(MESH_SCALE_VECTS.HIDE);
 		}
 
 		// Render

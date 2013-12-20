@@ -49,7 +49,7 @@ EarthShaders = {
 
 				// Calculate the dot product of the sun to the vertex normal
 				"float dProd = -1.0 * dot(vNormal, transformedSunPos);",
-				"vec4 color = texture2D( inpTexture, vUV );",
+				"vec4 color = texture2D(inpTexture, vUV);",
 
 				"color.a = clamp(dProd, 0.0, 1.0);",
 
